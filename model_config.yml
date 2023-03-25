@@ -1,0 +1,51 @@
+data_loader:
+  data_dir: "mnist_test_seq.npy"
+  batch_size: 1
+  image_size: 64
+  class_cond: False
+  deterministic:
+  num_workers: 4
+  rgb: False
+  seq_len: 20
+Model:
+  schedule_sampler: "uniform"
+  lr: 1e-4
+  weight_decay: 0.0
+  lr_anneal_steps: 0
+  microbatch: 32
+  ema_rate: "0.9999"
+  log_interval: 10
+  save_interval: 2000
+  resume_checkpoint: ""
+  use_fp16: False
+  fp16_scale_growth: 1e-3
+  clip: 1
+  seed: 123
+  anneal_type: step
+  steps_drop: 1.0
+  drop: 1.0
+  decay: 0.0
+  max_num_mask_frames: 4
+  mask_range: None
+  uncondition_rate: 0.0
+  exclude_conditional: True
+Diffusion_model:
+  num_channels: 128
+  num_res_blocks: 2
+  num_heads: 4
+  num_heads_upsample: -1
+  attention_resolutions: "16,8"
+  dropout: 0.0
+  learn_sigma: False
+  sigma_small: False
+  class_cond: False
+  diffusion_steps: 1000
+  noise_schedule: "linear"
+  timestep_respacing: ""
+  use_kl: False
+  predict_xstart: False
+  rescale_timesteps: True
+  rescale_learned_sigmas: True
+  use_checkpoint: False
+  use_scale_shift_norm: True
+  scale_time_dim: 20
