@@ -26,18 +26,8 @@ class MovingMNISTDataset(Dataset):
 
     def _load_data(self):
         data = np.load(self.data_file)
-        # print(data.shape)
-        # new_data_set = []
-        # for i in range(len(data)):
-        #     frame_arr = []
-        #     for j in range(len(data[i])):
-        #         expand_arr = np.expand_dims(data[i], axis=3)
-        #         expand_arr = np.transpose(expand_arr, [3, 0, 1, 2])
-        #         frame_arr.append(expand_arr)
-        #     new_data_set.append(frame_arr)
         data = np.expand_dims(data, axis=1)  # Add channel dimension (C=1)
         data = np.transpose(data, [2,1,0,3,4])
-        #print(data.shape)
         return data
 
     def __len__(self):
@@ -49,7 +39,7 @@ class MovingMNISTDataset(Dataset):
         if self.transform:
             sample = self.transform(sample)
         sample = sample.astype(np.float32)
-        print(sample.shape)
+        #print(sample.shape)
         return sample
 
 

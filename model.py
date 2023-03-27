@@ -23,60 +23,63 @@ from utils.fp16_util import (
     unflatten_master_params,
     zero_grad,
 )
+import config
+
 INITIAL_LOG_LOSS_SCALE = 20.0
 
-class RAMVID:
-        def __init__(self, data, loader_value):
-
-                self.data = data
+class Model:
+        def __init__(self, file_path):
+                #file_path = 'model_config.yml'
+                load_data_config, model_config, Diffusion_config = config.read_yaml(file_path)
 
                 # Data Loading parameters
-                self.data_dir = loader_value.get('data_loader').get('data_dir')
-                self.batch_size = loader_value.get('data_loader').get('batch_size')
-                self.image_size = loader_value.get('data_loader').get('image_size')
-                self.class_cond = loader_value.get('data_loader').get('class_cond')
-                self.deterministic = loader_value.get('data_loader').get('deterministic')
-                self.rgb = loader_value.get('data_loader').get('rgb')
-                self.seq_len = loader_value.get('data_loader').get('seq_len')
+                self.data_dir = load_data_config.data_dir
+                self.batch_size = load_data_config.batch_size
+                self.image_size = load_data_config.image_size
+                self.num_workders = load_data_config.num_workers
+                #self.class_cond = load_data_config.class_cond
+                #self.deterministic = load_data_config.deterministic
+                self.rgb = load_data_config.rgb
+                self.seq_len = load_data_config.seq_len
 
                 # Model Parameters
-                self.schedule_sampler = loader_value.get('Model').get('schedule_sampler')
-                self.lr = float(loader_value.get('Model').get('lr'))
+                self.schedule_sampler = model_config.schedule_sampler
+                self.lr = float(model_config.lr)
                 self.current_lr = self.lr
-                self.weight_decay = loader_value.get('Model').get('weight_decay')
-                self.lr_anneal_steps = loader_value.get('Model').get('lr_anneal_steps')
-                self.microbatch = loader_value.get('Model').get('microbatch')
+                self.weight_decay = model_config.weight_decay
+                self.lr_anneal_steps = model_config.lr_anneal_steps
+                self.microbatch = model_config.microbatch
                 self.accumulation_steps = self.batch_size / self.microbatch if self.microbatch > 0 else 1
                 self.microbatch = self.microbatch if self.microbatch > 0 else self.batch_size
-                self.ema_rate = loader_value.get('Model').get('ema_rate')
+                self.ema_rate = model_config.ema_rate
                 self.ema_rate = (
                         [self.ema_rate]
                         if isinstance(self.ema_rate, float)
                         else [float(x) for x in self.ema_rate.split(",")]
                 )
-                self.log_interval = loader_value.get('Model').get('log_interval')
-                self.save_interval = loader_value.get('Model').get('save_interval')
-                self.resume_checkpoint = loader_value.get('Model').get('resume_checkpoint')
-                self.use_fp16 = loader_value.get('Model').get('use_fp16')
-                self.fp16_scale_growth = loader_value.get('Model').get('fp16_scale_growth')
-                self.clip = loader_value.get('Model').get('clip')
-                self.seed = loader_value.get('Model').get('seed')
-                self.anneal_type = loader_value.get('Model').get('anneal_type')
-                self.steps_drop = loader_value.get('Model').get('steps_drop')
-                self.drop = loader_value.get('Model').get('drop')
-                self.decay = loader_value.get('Model').get('decay')
-                self.max_num_mask_frames = loader_value.get('Model').get('max_num_mask_frames')
-                self.mask_range = loader_value.get('Model').get('mask_range')
-                self.uncondition_rate = loader_value.get('Model').get('uncondition_rate')
-                self.exclude_conditional = loader_value.get('Model').get('exclude_conditional')
+                self.log_interval = model_config.log_interval
+                self.save_interval = model_config.save_interval
+                self.resume_checkpoint = model_config.resume_checkpoint
+                self.use_fp16 = model_config.use_fp16
+                self.fp16_scale_growth = model_config.fp16_scale_growth
+                self.clip = model_config.clip
+                self.seed = model_config.seed
+                self.anneal_type = model_config.anneal_type
+                self.steps_drop = model_config.steps_drop
+                self.drop = model_config.drop
+                self.decay = model_config.decay
+                self.max_num_mask_frames = model_config.max_num_mask_frames
+                self.mask_range = model_config.mask_range
+                self.uncondition_rate = model_config.uncondition_rate
+                self.exclude_conditional = model_config.exclude_conditional
 
                 self.mask_range = [0, self.seq_len]
 
-                 # if mask_range is None:
-                #     mask_range = [0, seq_len]
-                # else:
-                 #     mask_range = [int(i) for i in mask_range if i != ","]
-                #print(self.anneal_type)
+                if self.mask_range is None:
+                    self.mask_range = [0, seq_len]
+                else:
+                     self.mask_range = [int(i) for i in mask_range if i != ","]
+                print(self.anneal_type)
                 if self.anneal_type == 'linear':
                         assert self.lr_anneal_steps != 0
                         self.lr_anneal_steps = self.lr_anneal_steps
@@ -90,36 +93,33 @@ class RAMVID:
                         self.decay = self.decay
 
                 # Diffusion model parameters
-                self.num_channels = loader_value.get('Diffusion_model').get('num_channels')
-                self.num_res_blocks = loader_value.get('Diffusion_model').get('num_res_blocks')
-                self.num_heads = loader_value.get('Diffusion_model').get('num_heads')
-                self.num_heads_upsample = loader_value.get('Diffusion_model').get('num_heads_upsample')
-                self.attention_resolutions = loader_value.get('Diffusion_model').get('attention_resolutions')
-                self.dropout = loader_value.get('Diffusion_model').get('dropout')
-                self.learn_sigma = loader_value.get('Diffusion_model').get('learn_sigma')
-                self.sigma_small = loader_value.get('Diffusion_model').get('sigma_small')
-                self.class_cond = loader_value.get('Diffusion_model').get('class_cond')
-                self.diffusion_steps = loader_value.get('Diffusion_model').get('diffusion_steps')
-                self.noise_schedule = loader_value.get('Diffusion_model').get('noise_schedule')
-                self.timestep_respacing = loader_value.get('Diffusion_model').get('timestep_respacing')
-                self.use_kl = loader_value.get('Diffusion_model').get('use_kl')
-                self.predict_xstart = loader_value.get('Diffusion_model').get('predict_xstart')
-                self.rescale_timesteps = loader_value.get('Diffusion_model').get('rescale_timesteps')
-                self.rescale_learned_sigmas = loader_value.get('Diffusion_model').get('rescale_learned_sigmas')
-                self.use_checkpoint = loader_value.get('Diffusion_model').get('use_checkpoint')
-                self.use_scale_shift_norm = loader_value.get('Diffusion_model').get('use_scale_shift_norm')
-                self.scale_time_dim = loader_value.get('Diffusion_model').get('scale_time_dim')
+                self.num_channels = Diffusion_config.num_channels
+                self.num_res_blocks = Diffusion_config.num_res_blocks
+                self.num_heads = Diffusion_config.num_heads
+                self.num_heads_upsample = Diffusion_config.num_heads_upsample
+                self.attention_resolutions = Diffusion_config.attention_resolutions
+                self.dropout = Diffusion_config.dropout
+                self.learn_sigma = Diffusion_config.learn_sigma
+                self.sigma_small = Diffusion_config.sigma_small
+                self.class_cond = Diffusion_config.class_cond
+                self.diffusion_steps = Diffusion_config.diffusion_steps
+                self.noise_schedule = Diffusion_config.noise_schedule
+                self.timestep_respacing = Diffusion_config.timestep_respacing
+                self.use_kl = Diffusion_config.use_kl
+                self.predict_xstart = Diffusion_config.predict_xstart
+                self.rescale_timesteps = Diffusion_config.rescale_timesteps
+                self.rescale_learned_sigmas = Diffusion_config.rescale_learned_sigmas
+                self.use_checkpoint = Diffusion_config.use_checkpoint
+                self.use_scale_shift_norm = Diffusion_config.use_scale_shift_norm
+                self.scale_time_dim = Diffusion_config.scale_time_dim
 
-
-                logger.log("creating model and diffusion...")
+       # def model(self):
                 self.model, self.diffusion = create_model_and_diffusion(
                         self.image_size, self.class_cond, self.learn_sigma, self.sigma_small, self.num_channels,
                         self.num_res_blocks,self.scale_time_dim, self.num_heads, self.num_heads_upsample,
                         self.attention_resolutions, self.dropout,self.diffusion_steps, self.noise_schedule,
                         self.timestep_respacing, self.use_kl, self.predict_xstart,self.rescale_timesteps,
                         self.rescale_learned_sigmas, self.use_checkpoint, self.use_scale_shift_norm,self.rgb)
-
-
                 print(dist_util.dev())
                 # print(th.cuda.device_count())
                 self.model.to(dist_util.dev())
@@ -172,6 +172,7 @@ class RAMVID:
                                 )
                         self.use_ddp = False
                         self.ddp_model = self.model
+                #return self.model, self.diffusion, self.ddp_model, self.use_ddp
 
         def _load_and_sync_parameters(self):
                 self.resume_checkpoint = find_resume_checkpoint() or self.resume_checkpoint
@@ -221,25 +222,25 @@ class RAMVID:
                 self.master_params = make_master_params(self.model_params)
                 self.model.convert_to_fp16()
 
-        def run(self):
-                while (
-                        self.current_lr
-                ):
-                        ####### One
-                        batch = next(self.data)
-                        #print(batch.shape)
-                        self.run_step(batch)
-                        if self.step % self.log_interval == 0:
-                                logger.dumpkvs()
-                        if self.step % self.save_interval == 0:
-                                self.save()
-                                # Run for a finite amount of time in integration tests. Does access an environment variable
-                                if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
-                                        return
-                        self.step += 1
-                # Save the last checkpoint if it wasn't already saved.
-                if (self.step - 1) % self.save_interval != 0:
-                        self.save()
+        # def run(self):
+        #         while (
+        #                 self.current_lr
+        #         ):
+        #                 ####### One
+        #                 batch = next(self.data)
+        #                 #print(batch.shape)
+        #                 self.run_step(batch)
+        #                 if self.step % self.log_interval == 0:
+        #                         logger.dumpkvs()
+        #                 if self.step % self.save_interval == 0:
+        #                         self.save()
+        #                         # Run for a finite amount of time in integration tests. Does access an environment variable
+        #                         if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
+        #                                 return
+        #                 self.step += 1
+        #         # Save the last checkpoint if it wasn't already saved.
+        #         if (self.step - 1) % self.save_interval != 0:
+        #                 self.save()
 
         def run_step(self, batch):
                 self.forward_backward(batch)
@@ -255,9 +256,9 @@ class RAMVID:
                 zero_grad(self.model_params)
                 ########## TIME (Per Batch) and Loss ###########
                 ss = datetime.datetime.now()
-                for i in range(0, batch.shape[0], self.microbatch):
-                        micro = batch[i: i + self.microbatch].to(dist_util.dev())
-                        last_batch = (i + self.microbatch) >= batch.shape[0]
+                for i in range(0, int(batch.shape[0]), int(self.microbatch)):
+                        micro = batch[i: i + int(self.microbatch)].to(dist_util.dev())
+                        last_batch = (i + int(self.microbatch)) >= int(batch.shape[0])
                         t, weights = self.schedule_sampler.sample(micro.shape[0], dist_util.dev())
                         compute_losses = functools.partial(
                                 self.diffusion.training_losses,
